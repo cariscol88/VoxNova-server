@@ -8,7 +8,7 @@ from flask import Flask, request, jsonify
 # =========================
 # CONFIGURACIÓN API
 # =========================
-openai.api_key = os.environ.get("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", "")
+openai.api_key = os.environ.get("OPENAI_API_KEY", "")
 
 # =========================
 # Flask app
@@ -33,19 +33,17 @@ def write_wav_pcm16(audio_data, sample_rate, filename):
         wf.setframerate(sample_rate)
         wf.writeframes(pcm_data.tobytes())
 
-# Detect language mock (puedes usar tu detect_language)
+# Detect language mock
 def detect_language(text):
     return "eng"  # por defecto para pruebas
 
 # Procesar audio: guardamos WAV y retornamos mock TTS
 def process_audio_file(file_bytes, filename="temp.wav"):
-    # Guardar audio en /tmp
     filepath = os.path.join(TMP_FOLDER, filename)
     with open(filepath, "wb") as f:
         f.write(file_bytes)
 
-    # Aquí iría tu transcripción y TTS real
-    # Por ahora devolvemos mock
+    # Mock de transcripción y TTS
     return {
         "transcript": "Texto transcrito simulado",
         "tts_files": {lang: f"/tmp/tts_{lang}.wav" for lang in target_languages}
@@ -63,5 +61,7 @@ def process_audio():
     return jsonify(result)
 
 # =========================
-# Main
+# Export app para Gunicorn
 # =========================
+# Railway detecta la variable "app" automáticamente
+# y no necesita ejecutar app.run()
