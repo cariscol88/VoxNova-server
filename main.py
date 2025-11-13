@@ -60,6 +60,11 @@ def process_audio():
     result = process_audio_file(file.read(), file.filename)
     return jsonify(result)
 
+# Endpoint raíz para healthcheck
+@app.route("/")
+def index():
+    return "Server OK", 200
+
 # =========================
 # Export app para Gunicorn
 # =========================
