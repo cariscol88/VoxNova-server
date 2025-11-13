@@ -1,7 +1,7 @@
-sounddevice
-numpy
-openai
 flask
+openai
+numpy
+sounddevice
 requests
 aiohttp
 aiortc
