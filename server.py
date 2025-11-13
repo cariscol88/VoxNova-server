@@ -9,7 +9,7 @@ from aiortc import RTCPeerConnection, RTCSessionDescription, MediaStreamTrack
 import aiohttp_cors
 
 # -------------------------
-# CONFIGURACIÓN API
+# Configuración API
 # -------------------------
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
@@ -36,37 +36,30 @@ def process_audio_file(file_bytes, filename="temp.wav"):
     filepath = os.path.join(TMP_FOLDER, filename)
     with open(filepath, "wb") as f:
         f.write(file_bytes)
-    # Mock de transcripción y TTS
     return {
         "transcript": "Texto transcrito simulado",
         "tts_files": {lang: f"/tmp/tts_{lang}.wav" for lang in target_languages}
     }
 
 # -------------------------
-# Endpoints /process_audio
+# Endpoints
 # -------------------------
 async def process_audio(request):
     reader = await request.multipart()
     file_part = await reader.next()
     if file_part is None or file_part.name != "file":
         return web.json_response({"error": "No file part"}, status=400)
-
     file_bytes = await file_part.read()
     result = process_audio_file(file_bytes, file_part.filename)
     return web.json_response(result)
 
-# -------------------------
-# WebRTC /offer
-# -------------------------
 pcs = set()
 
 class AudioRelayTrack(MediaStreamTrack):
     kind = "audio"
-
     def __init__(self, track):
         super().__init__()
         self.track = track
-
     async def recv(self):
         return await self.track.recv()
 
@@ -100,17 +93,12 @@ async def on_shutdown(app):
     pcs.clear()
 
 # -------------------------
-# App aiohttp
+# App aiohttp + CORS
 # -------------------------
 app = web.Application()
 app.on_shutdown.append(on_shutdown)
 
-# Registrar rutas
-app.router.add_post("/process_audio", process_audio)
-app.router.add_post("/offer", offer)
-app.router.add_get("/", lambda r: web.Response(text="Server OK", status=200))
-
-# Configurar CORS
+# Configurar CORS antes de registrar rutas
 cors = aiohttp_cors.setup(app, defaults={
     "*": aiohttp_cors.ResourceOptions(
         allow_credentials=True,
@@ -118,8 +106,16 @@ cors = aiohttp_cors.setup(app, defaults={
         allow_headers="*",
     )
 })
-for route in list(app.router.routes()):
-    cors.add(route)
+
+# Registrar rutas con CORS
+process_audio_resource = cors.add(app.router.add_resource("/process_audio"))
+cors.add(process_audio_resource.add_route("POST", process_audio))
+
+offer_resource = cors.add(app.router.add_resource("/offer"))
+cors.add(offer_resource.add_route("POST", offer))
+
+root_resource = cors.add(app.router.add_resource("/"))
+cors.add(root_resource.add_route("GET", lambda r: web.Response(text="Server OK", status=200)))
 
 # -------------------------
 # Ejecutar servidor
