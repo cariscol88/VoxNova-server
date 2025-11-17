@@ -1,21 +1,21 @@
 # audio_processor.py
-
-import asyncio
+import numpy as np
+from aiortc import MediaStreamTrack
 
 class AudioProcessor:
     def __init__(self):
-        # Si querés acumular audio temporalmente:
-        self.buffer = bytearray()
         self.frame_count = 0
 
     async def handle_frame(self, frame):
-        """
-        frame: objeto AudioFrame de aiortc
-        Convertimos a WAV/PCM y lo guardamos o pasamos al pipeline.
-        """
-        pcm = frame.to_ndarray().tobytes()
-        self.buffer.extend(pcm)
+        pcm = frame.to_ndarray()
+
+        # Asegurar forma correcta (mono)
+        if pcm.ndim > 1:
+            pcm = pcm[:, 0]
+
         self.frame_count += 1
 
-        # Debug mínimo controlado
-       print("[AudioProcessor] frame recibido:", len(pcm), "bytes")
+        print("[AudioProcessor] frame recibido:", len(pcm), "bytes")
+
+        # retorno idéntico
+        return frame
