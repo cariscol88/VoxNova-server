@@ -8,6 +8,10 @@ from aiohttp import web
 from aiortc import RTCPeerConnection, RTCSessionDescription, MediaStreamTrack
 import aiohttp_cors
 
+# ← NUEVO
+from audio_processor import AudioProcessor
+processor = AudioProcessor()
+
 # -------------------------
 # Configuración API
 # -------------------------
@@ -57,11 +61,17 @@ pcs = set()
 
 class AudioRelayTrack(MediaStreamTrack):
     kind = "audio"
+
     def __init__(self, track):
         super().__init__()
         self.track = track
+
     async def recv(self):
-        return await self.track.recv()
+        frame = await self.track.recv()
+        # ← NUEVO: enviar frame al procesador externo
+        import asyncio
+        asyncio.create_task(processor.handle_frame(frame))
+        return frame
 
 async def offer(request):
     params = await request.json()
@@ -98,7 +108,6 @@ async def on_shutdown(app):
 app = web.Application()
 app.on_shutdown.append(on_shutdown)
 
-# Configurar CORS antes de registrar rutas
 cors = aiohttp_cors.setup(app, defaults={
     "*": aiohttp_cors.ResourceOptions(
         allow_credentials=True,
@@ -107,7 +116,6 @@ cors = aiohttp_cors.setup(app, defaults={
     )
 })
 
-# Registrar rutas con CORS
 process_audio_resource = cors.add(app.router.add_resource("/process_audio"))
 cors.add(process_audio_resource.add_route("POST", process_audio))
 
