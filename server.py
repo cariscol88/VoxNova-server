@@ -4,36 +4,28 @@ import io
 import wave
 import json
 import numpy as np
+import asyncio
+
 from aiohttp import web
 from aiortc import RTCPeerConnection, RTCSessionDescription, MediaStreamTrack
 import aiohttp_cors
 
-# ← NUEVO
 from audio_processor import AudioProcessor
+
+# -------------------------
+# Inicializar procesador global
+# -------------------------
 processor = AudioProcessor()
 
 # -------------------------
-# Configuración API
-# -------------------------
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-
-# -------------------------
-# Carpeta temporal
+# Carpetas temporales
 # -------------------------
 TMP_FOLDER = "/tmp/tts_voxnova"
 os.makedirs(TMP_FOLDER, exist_ok=True)
 
 # -------------------------
-# Funciones auxiliares
+# Procesamiento de uploads (endpoint viejo)
 # -------------------------
-def write_wav_pcm16(audio_data, sample_rate, filename):
-    pcm_data = np.int16(np.clip(audio_data, -1, 1) * 32767)
-    with wave.open(filename, "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(sample_rate)
-        wf.writeframes(pcm_data.tobytes())
-
 target_languages = ["ita", "eng", "esp", "fra", "deu", "zh", "gr"]
 
 def process_audio_file(file_bytes, filename="temp.wav"):
@@ -45,33 +37,19 @@ def process_audio_file(file_bytes, filename="temp.wav"):
         "tts_files": {lang: f"/tmp/tts_{lang}.wav" for lang in target_languages}
     }
 
-# -------------------------
-# Endpoints
-# -------------------------
 async def process_audio(request):
     reader = await request.multipart()
-    file_part = await reader.next()
-    if file_part is None or file_part.name != "file":
+    part = await reader.next()
+    if part is None or part.name != "file":
         return web.json_response({"error": "No file part"}, status=400)
-    file_bytes = await file_part.read()
-    result = process_audio_file(file_bytes, file_part.filename)
+    file_bytes = await part.read()
+    result = process_audio_file(file_bytes, part.filename)
     return web.json_response(result)
 
+# -------------------------
+# WebRTC
+# -------------------------
 pcs = set()
-
-class AudioRelayTrack(MediaStreamTrack):
-    kind = "audio"
-
-    def __init__(self, track):
-        super().__init__()
-        self.track = track
-
-    async def recv(self):
-        frame = await self.track.recv()
-        # ← NUEVO: enviar frame al procesador externo
-        import asyncio
-        asyncio.create_task(processor.handle_frame(frame))
-        return frame
 
 async def offer(request):
     params = await request.json()
@@ -81,12 +59,9 @@ async def offer(request):
     pc = RTCPeerConnection()
     pcs.add(pc)
 
-    from audio_processor import AudioProcessor
-    processor = AudioProcessor()
-
     @pc.on("track")
     async def on_track(track):
-        print(f"Nuevo track recibido: {track.kind}")
+        print("Nuevo track recibido:", track.kind)
 
         if track.kind == "audio":
 
@@ -95,12 +70,11 @@ async def offer(request):
                     frame = await track.recv()
                     await processor.handle_frame(frame)
 
-            # ejecutar la tarea en background
             asyncio.create_task(forward_frames())
 
-    offer_desc = RTCSessionDescription(sdp=offer_sdp, type=offer_type)
-    await pc.setRemoteDescription(offer_desc)
-
+    # SDP handshake
+    desc = RTCSessionDescription(sdp=offer_sdp, type=offer_type)
+    await pc.setRemoteDescription(desc)
     answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
 
@@ -109,16 +83,16 @@ async def offer(request):
     )
 
 async def on_shutdown(app):
-    coros = [pc.close() for pc in pcs]
-    await asyncio.gather(*coros)
+    await asyncio.gather(*[pc.close() for pc in pcs])
     pcs.clear()
 
 # -------------------------
-# App aiohttp + CORS
+# Iniciar servidor
 # -------------------------
 app = web.Application()
 app.on_shutdown.append(on_shutdown)
 
+# CORS
 cors = aiohttp_cors.setup(app, defaults={
     "*": aiohttp_cors.ResourceOptions(
         allow_credentials=True,
@@ -127,17 +101,15 @@ cors = aiohttp_cors.setup(app, defaults={
     )
 })
 
-process_audio_resource = cors.add(app.router.add_resource("/process_audio"))
-cors.add(process_audio_resource.add_route("POST", process_audio))
+# Rutas
+r1 = cors.add(app.router.add_resource("/process_audio"))
+cors.add(r1.add_route("POST", process_audio))
 
-offer_resource = cors.add(app.router.add_resource("/offer"))
-cors.add(offer_resource.add_route("POST", offer))
+r2 = cors.add(app.router.add_resource("/offer"))
+cors.add(r2.add_route("POST", offer))
 
-root_resource = cors.add(app.router.add_resource("/"))
-cors.add(root_resource.add_route("GET", lambda r: web.Response(text="Server OK", status=200)))
+r3 = cors.add(app.router.add_resource("/"))
+cors.add(r3.add_route("GET", lambda r: web.Response(text="Server OK", status=200)))
 
-# -------------------------
-# Ejecutar servidor
-# -------------------------
 if __name__ == "__main__":
     web.run_app(app, port=8080)
