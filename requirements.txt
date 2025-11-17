@@ -4,5 +4,6 @@ numpy
 sounddevice
 requests
 aiohttp
+aiohttp_cors
 aiortc
 gunicorn
