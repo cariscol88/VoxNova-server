@@ -59,12 +59,15 @@ async def offer(request):
     pc = RTCPeerConnection()
     pcs.add(pc)
 
+    pc.addTransceiver("audio", direction="recvonly")  # ← IMPORTANTE
+
+    processor = AudioProcessor()
+
     @pc.on("track")
     async def on_track(track):
-        print("Nuevo track recibido:", track.kind)
+        print(f"Nuevo track recibido: {track.kind}")
 
         if track.kind == "audio":
-
             async def forward_frames():
                 while True:
                     frame = await track.recv()
@@ -72,9 +75,8 @@ async def offer(request):
 
             asyncio.create_task(forward_frames())
 
-    # SDP handshake
-    desc = RTCSessionDescription(sdp=offer_sdp, type=offer_type)
-    await pc.setRemoteDescription(desc)
+    offer_desc = RTCSessionDescription(sdp=offer_sdp, type=offer_type)
+    await pc.setRemoteDescription(offer_desc)
     answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
 
