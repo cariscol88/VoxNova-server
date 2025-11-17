@@ -18,5 +18,4 @@ class AudioProcessor:
         self.frame_count += 1
 
         # Debug mínimo controlado
-        if self.frame_count % 50 == 0:
-            print(f"[AudioProcessor] {self.frame_count} frames recibidos")
+       print("[AudioProcessor] frame recibido:", len(pcm), "bytes")
